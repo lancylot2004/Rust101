@@ -5,6 +5,8 @@ use std::fs;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::exit;
+use picture_lib::Implementation;
+use picture_lib::invert::process_invert;
 
 #[derive(Parser)]
 #[command(
@@ -21,9 +23,9 @@ struct CLI {
     #[arg(value_parser = valid_output_file)]
     output_path: String,
 
-    /// Enable verbose output.
-    #[arg(short, long)]
-    verbose: bool,
+    /// Implementation type to use.
+    #[arg(default_value = "basic")]
+    implementation: Implementation,
 
     /// Overwrite output file if it already exists.
     #[arg(long)]
@@ -99,24 +101,16 @@ fn main() {
             .exit();
     });
 
-    let rgb = input.to_rgb8();
-    let out_rgb = match cli.process {
-        Process::Invert => process_invert(rgb, cli.verbose),
-        Process::Grayscale => process_grayscale(rgb, cli.verbose),
-        Process::Rotate { degrees } => process_rotate(rgb, degrees, cli.verbose),
-        Process::Flip { axis } => process_flip(rgb, axis, cli.verbose),
-        Process::Blur => process_blur(rgb, cli.verbose),
+    let mut rgb = input.to_rgb8();
+    match cli.process {
+        Process::Invert => process_invert(&mut rgb, cli.implementation),
+        Process::Grayscale => todo!("Not yet implemented."),
+        Process::Rotate { degrees } => todo!("Not yet implemented."),
+        Process::Flip { axis } => todo!("Not yet implemented."),
+        Process::Blur => todo!("Not yet implemented."),
     }
-    .unwrap_or_else(|e| {
-        CLI::command()
-            .error(
-                ErrorKind::InvalidValue,
-                format!("Error processing image: {e}"),
-            )
-            .exit()
-    });
 
-    write_image(&cli.output_path, out_rgb).unwrap_or_else(|e| {
+    write_image(&cli.output_path, rgb).unwrap_or_else(|e| {
         CLI::command()
             .error(
                 ErrorKind::Io,
@@ -193,50 +187,4 @@ fn valid_output_file(s: &str) -> Result<String, String> {
         ))?;
 
     Ok(s.to_string())
-}
-
-fn process_invert(img: RgbImage, verbose: bool) -> Result<RgbImage, String> {
-    if verbose {
-        eprintln!("[picture_lib] invert: placeholder (no-op)");
-    }
-    // TODO: per pixel (r,g,b) -> (255-r, 255-g, 255-b)
-    Ok(img)
-}
-
-fn process_grayscale(img: RgbImage, verbose: bool) -> Result<RgbImage, String> {
-    if verbose {
-        eprintln!("[picture_lib] grayscale: placeholder (no-op)");
-    }
-    // TODO: per pixel -> luminance, set (y,y,y)
-    Ok(img)
-}
-
-fn process_rotate(
-    img: RgbImage,
-    degrees: RotateDegrees,
-    verbose: bool,
-) -> Result<RgbImage, String> {
-    if verbose {
-        eprintln!("[picture_lib] rotate: placeholder (no-op)");
-    }
-    let _ = degrees;
-    // TODO: rotate by 90/180/270; consider dimension swap for 90/270
-    Ok(img)
-}
-
-fn process_flip(img: RgbImage, axis: FlipAxis, verbose: bool) -> Result<RgbImage, String> {
-    if verbose {
-        eprintln!("[picture_lib] flip: placeholder (no-op)");
-    }
-    let _ = axis;
-    // TODO: h = mirror left-right, v = mirror top-bottom
-    Ok(img)
-}
-
-fn process_blur(img: RgbImage, verbose: bool) -> Result<RgbImage, String> {
-    if verbose {
-        eprintln!("[picture_lib] blur: placeholder (no-op)");
-    }
-    // TODO: convolution / box blur / gaussian blur over RGB pixels
-    Ok(img)
 }
