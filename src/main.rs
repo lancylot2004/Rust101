@@ -6,6 +6,11 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
+mod effect;
+mod image_array;
+mod strategy;
+mod thread_data;
+
 #[derive(Parser)]
 #[command(
     name = "picture_lib",
