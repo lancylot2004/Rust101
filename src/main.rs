@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 use picture_lib::Implementation;
 use picture_lib::invert::process_invert;
+use picture_lib::rotate::process_rotate;
+use picture_lib::blur::process_blur;
 
 #[derive(Parser)]
 #[command(
@@ -56,17 +58,19 @@ enum Process {
     },
 
     /// Blur the image.
-    Blur,
+    Blur {
+        radius: u32,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
 enum RotateDegrees {
     #[value(name = "90")]
-    Deg90,
+    Deg90 = 90,
     #[value(name = "180")]
-    Deg180,
+    Deg180 = 180,
     #[value(name = "270")]
-    Deg270,
+    Deg270 = 270,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -103,12 +107,19 @@ fn main() {
 
     let mut rgb = input.to_rgb8();
     match cli.process {
-        Process::Invert => process_invert(&mut rgb, cli.implementation),
+        Process::Invert => {
+            process_invert(&mut rgb, cli.implementation);
+        },
         Process::Grayscale => todo!("Not yet implemented."),
-        Process::Rotate { degrees } => todo!("Not yet implemented."),
-        Process::Flip { axis } => todo!("Not yet implemented."),
-        Process::Blur => todo!("Not yet implemented."),
-    }
+        Process::Rotate { degrees } => {
+            let new_image = process_rotate(&mut rgb, degrees as u16, cli.implementation);
+            rgb = new_image;
+        },
+        Process::Flip { .. } => todo!("Not yet implemented."),
+        Process::Blur { radius } => {
+            process_blur(&mut rgb, radius, cli.implementation);
+        },
+    };
 
     write_image(&cli.output_path, rgb).unwrap_or_else(|e| {
         CLI::command()
