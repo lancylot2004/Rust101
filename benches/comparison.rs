@@ -1,62 +1,25 @@
-use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
-use image::ImageReader;
-use picture_lib::blur::{blur_basic, blur_concurrently};
-use picture_lib::invert::{invert_basic, invert_concurrently};
-use picture_lib::rotate::{rotate_basic, rotate_concurrently};
+use rust_102::game_of_life::{step_parallel, step_serial};
+use rust_102::seed::seed;
+use std::hint::black_box;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    // Load test image
-    let img = ImageReader::open("test.jpg")
-        .expect("Failed to open test.jpg")
-        .decode()
-        .expect("Failed to decode image")
-        .to_rgb8();
+    let mut curr_buffer = vec![false; 800 * 600];
+    let mut next_buffer = vec![false; 800 * 600];
+    seed(&mut curr_buffer, 800, 600);
 
-    c.bench_function("invert_basic", |b| {
+    c.bench_function("step_serial", |b| {
         b.iter_batched(
-            || img.clone(),
-            |mut img_copy| invert_basic(black_box(&mut img_copy)),
+            || {},
+            |_| step_serial(black_box(&curr_buffer), black_box(&mut next_buffer), 800, 600),
             criterion::BatchSize::SmallInput,
         )
     });
 
-    c.bench_function("invert_concurrent", |b| {
+    c.bench_function("step_parallel", |b| {
         b.iter_batched(
-            || img.clone(),
-            |mut img_copy| invert_concurrently(black_box(&mut img_copy)),
-            criterion::BatchSize::SmallInput,
-        )
-    });
-
-    c.bench_function("rotate_basic", |b| {
-        b.iter_batched(
-            || img.clone(),
-            |mut img_copy| rotate_basic(black_box(&mut img_copy), 90),
-            criterion::BatchSize::SmallInput,
-        )
-    });
-
-    c.bench_function("rotate_concurrent", |b| {
-        b.iter_batched(
-            || img.clone(),
-            |mut img_copy| rotate_concurrently(black_box(&mut img_copy), 90),
-            criterion::BatchSize::SmallInput,
-        )
-    });
-
-    c.bench_function("blur_basic", |b| {
-        b.iter_batched(
-            || img.clone(),
-            |mut img_copy| blur_basic(black_box(&mut img_copy), 5),
-            criterion::BatchSize::SmallInput,
-        )
-    });
-
-    c.bench_function("blur_concurrent", |b| {
-        b.iter_batched(
-            || img.clone(),
-            |mut img_copy| blur_concurrently(black_box(&mut img_copy), 5),
+            || {},
+            |_| step_parallel(black_box(&curr_buffer), black_box(&mut next_buffer), &mut 0, 800, 600, 32),
             criterion::BatchSize::SmallInput,
         )
     });
