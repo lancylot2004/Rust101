@@ -19,6 +19,7 @@ const TEXT_HEIGHT: usize = 12;
 const FPS_UPDATE_INTERVAL: f64 = 0.5;
 
 #[derive(Copy, Clone, ValueEnum, Debug)]
+#[derive(PartialEq)]
 enum Mode {
     Serial,
     Parallel,
@@ -68,18 +69,14 @@ fn main() {
 
     let mut pixels = vec![0u32; width * height];
 
-    let text = font6x8::new_renderer(width, height, TEXT_COLOUR);
+    let drawer = font6x8::new_renderer(width, height, TEXT_COLOUR);
     let mut frame_count = 0;
     let mut last_time = Instant::now();
     let mut fps = 0.0;
 
     let num_threads = match cli.mode {
         Mode::Serial => 1,
-        _ => {
-            let threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
-            println!("Using {threads} threads.");
-            threads
-        },
+        _ => thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
     };
 
     let mut render_frame = |window: &mut Window, grid: &[u8]| {
@@ -96,7 +93,12 @@ fn main() {
         }
 
         pixels[..width * TEXT_HEIGHT].fill(0);
-        text.draw_text(&mut pixels, 2, 2, &format!("mode: {:?}; fps: {fps:.2}; num_threads: {num_threads}", cli.mode));
+        let mut text = format!("mode: {:?}; fps: {fps:.2}; num_threads: {num_threads}", cli.mode);
+        if cli.mode == Mode::Workers || cli.mode == Mode::Pool {
+            let chunk_size = cli.chunk_size.unwrap();
+            text.push_str(&format!("; chunk_size: {chunk_size}"));
+        }
+        drawer.draw_text(&mut pixels, 2, 2, &text);
         window.update_with_buffer(&pixels, width, height).unwrap();
     };
 

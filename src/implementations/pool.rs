@@ -1,5 +1,6 @@
 use std::sync::{Arc, Barrier, Mutex, RwLock};
 use std::{mem, thread};
+use std::sync::atomic::{AtomicBool, Ordering};
 use crate::{advance_cell, idx, neighbor_count};
 
 pub struct WorkerPool {
@@ -7,11 +8,13 @@ pub struct WorkerPool {
     end_barrier: Arc<Barrier>,
     next_job: Arc<Mutex<usize>>,
     threads: Vec<thread::JoinHandle<()>>,
+    stop_flag: Arc<AtomicBool>
 }
 
 impl Drop for WorkerPool {
     fn drop(&mut self) {
-        self.end_barrier.wait();
+        self.stop_flag.store(true, Ordering::Relaxed);
+        self.start_barrier.wait();
         for thread in self.threads.drain(..) {
             thread.join().expect("Worker thread panicked!");
         }
@@ -30,14 +33,18 @@ pub fn initialise_pool(
     let total = width * height;
     let start_barrier = Arc::new(Barrier::new(num_threads + 1));
     let end_barrier = Arc::new(Barrier::new(num_threads + 1));
+    let stop_flag =  Arc::new(AtomicBool::new(false));
 
     let threads = Vec::from_fn(num_threads, |_| {
-        let (curr_buffer, next_buffer, next_job) = (Arc::clone(&curr_buffer), Arc::clone(&next_buffer), Arc::clone(&next_job));
+        let (curr_buffer, next_buffer, next_job, stop_flag) = (Arc::clone(&curr_buffer), Arc::clone(&next_buffer), Arc::clone(&next_job), Arc::clone(&stop_flag));
         let (start_barrier, end_barrier) = (Arc::clone(&start_barrier), Arc::clone(&end_barrier));
         let mut scratch = vec![0u8; chunk_size];
 
         thread::spawn(move || loop {
             start_barrier.wait();
+            if stop_flag.load(Ordering::Acquire) {
+                break;
+            }
             let curr_buffer = curr_buffer.read().unwrap();
 
             loop {
@@ -63,7 +70,7 @@ pub fn initialise_pool(
         })
     });
 
-    WorkerPool { start_barrier, end_barrier, next_job, threads }
+    WorkerPool { start_barrier, end_barrier, next_job, threads, stop_flag }
 }
 
 pub fn step_pool(
