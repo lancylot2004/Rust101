@@ -1,10 +1,11 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use minifb::{Key, Window, WindowOptions};
 use minifb_fonts::font6x8;
-use rust_102::game_of_life::{step_parallel, step_serial};
+use rust_102::game_of_life::{step_parallel, step_serial, step_workers};
 use rust_102::seed::seed;
 use std::mem::swap;
 use std::process::exit;
+use std::thread;
 use std::time::Instant;
 
 const ALIVE_COLOUR: u32 = 0xFFFFFF;
@@ -12,6 +13,13 @@ const DEAD_COLOUR: u32 = 0x000000;
 const TEXT_COLOUR: u32 = 0x00FF00;
 const TEXT_HEIGHT: usize = 12;
 const FPS_UPDATE_INTERVAL: f64 = 0.5;
+
+#[derive(Copy, Clone, ValueEnum, Debug)]
+enum Mode {
+    Serial,
+    Parallel,
+    Workers,
+}
 
 #[derive(Parser)]
 #[command(
@@ -23,17 +31,17 @@ struct CLI {
     #[arg(short, long, value_parser = parse_window_size, default_value = "800x600")]
     size: (usize, usize),
 
-    /// Use parallel processing.
+    /// What strategy to use for stepping the simulation.
     #[arg(short, long)]
-    parallel: bool,
+    mode: Mode,
 
-    /// Tile size for parallel processing.
-    #[arg(short, long, default_value_t = 16)]
-    tile_size: usize,
-
-    #[arg(short, long)]
-    /// Debug printing.
-    debug: bool,
+    /// Chunk size. Required when using the `workers` mode. Ignored otherwise.
+    #[arg(
+        short = 'c',
+        long,
+        required_if_eq("mode", "workers"),
+    )]
+    chunk_size: Option<usize>,
 }
 
 fn main() {
@@ -50,10 +58,10 @@ fn main() {
         },
     )
         .expect("Window could not be created.");
-    window.set_target_fps(240);
+    // window.set_target_fps(240);
 
-    let mut curr_buffer = vec![false; width * (height - TEXT_HEIGHT)];
-    let mut next_buffer = vec![false; width * (height - TEXT_HEIGHT)];
+    let mut curr_buffer = vec![0u8; width * (height - TEXT_HEIGHT)];
+    let mut next_buffer = vec![0u8; width * (height - TEXT_HEIGHT)];
     seed(&mut curr_buffer, width, height - TEXT_HEIGHT);
 
     let mut pixels = vec![0u32; width * height];
@@ -62,18 +70,22 @@ fn main() {
     let mut frame_count = 0;
     let mut last_time = Instant::now();
     let mut fps = 0.0;
-    let mut num_threads = 0;
+
+    let num_threads = match cli.mode {
+        Mode::Serial => 1,
+        Mode::Parallel | Mode::Workers => thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+    };
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        if cli.parallel {
-            step_parallel(&curr_buffer, &mut next_buffer, &mut num_threads, width, height - TEXT_HEIGHT, cli.tile_size);
-        } else {
-            step_serial(&curr_buffer, &mut next_buffer, width, height - TEXT_HEIGHT);
+        match cli.mode {
+            Mode::Serial => step_serial(&curr_buffer, &mut next_buffer, width, height - TEXT_HEIGHT),
+            Mode::Parallel => step_parallel(&curr_buffer, &mut next_buffer, num_threads, width, height - TEXT_HEIGHT),
+            Mode::Workers => step_workers(&curr_buffer, &mut next_buffer, num_threads, cli.chunk_size.unwrap(), width, height - TEXT_HEIGHT),
         }
 
         swap(&mut curr_buffer, &mut next_buffer);
         for (pixel, &cell) in pixels[width * TEXT_HEIGHT..].iter_mut().zip(curr_buffer.iter()) {
-            *pixel = if cell { ALIVE_COLOUR } else { DEAD_COLOUR };
+            *pixel = if cell == 1 { ALIVE_COLOUR } else { DEAD_COLOUR };
         }
 
         frame_count += 1;
@@ -85,7 +97,7 @@ fn main() {
         }
 
         pixels[..width * TEXT_HEIGHT].fill(0);
-        text.draw_text(&mut pixels, 2, 2, &format!("parallel: {}; fps: {fps:.2}; num_threads: {num_threads}", cli.parallel));
+        text.draw_text(&mut pixels, 2, 2, &format!("mode: {:?}; fps: {fps:.2}; num_threads: {num_threads}", cli.mode));
         window.update_with_buffer(&pixels, width, height).unwrap();
     }
 
