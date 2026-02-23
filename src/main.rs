@@ -1,12 +1,16 @@
 use clap::{Parser, ValueEnum};
 use minifb::{Key, Window, WindowOptions};
 use minifb_fonts::font6x8;
-use rust_102::game_of_life::{step_parallel, step_serial, step_workers};
 use rust_102::seed::seed;
 use std::mem::swap;
 use std::process::exit;
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
+use rust_102::implementations::parallel::step_parallel;
+use rust_102::implementations::pool::{initialise_pool, step_pool};
+use rust_102::implementations::serial::step_serial;
+use rust_102::implementations::workers::step_workers;
 
 const ALIVE_COLOUR: u32 = 0xFFFFFF;
 const DEAD_COLOUR: u32 = 0x000000;
@@ -19,6 +23,7 @@ enum Mode {
     Serial,
     Parallel,
     Workers,
+    Pool,
 }
 
 #[derive(Parser)]
@@ -39,7 +44,7 @@ struct CLI {
     #[arg(
         short = 'c',
         long,
-        required_if_eq("mode", "workers"),
+        required_if_eq_any([("mode", "workers"), ("mode", "pool")]),
     )]
     chunk_size: Option<usize>,
 }
@@ -47,6 +52,7 @@ struct CLI {
 fn main() {
     let cli = CLI::parse();
     let (width, height) = cli.size;
+    let grid_height = height - TEXT_HEIGHT;
 
     let mut window = Window::new(
         "Game of Life",
@@ -58,11 +64,7 @@ fn main() {
         },
     )
         .expect("Window could not be created.");
-    // window.set_target_fps(240);
-
-    let mut curr_buffer = vec![0u8; width * (height - TEXT_HEIGHT)];
-    let mut next_buffer = vec![0u8; width * (height - TEXT_HEIGHT)];
-    seed(&mut curr_buffer, width, height - TEXT_HEIGHT);
+    window.set_target_fps(240);
 
     let mut pixels = vec![0u32; width * height];
 
@@ -73,18 +75,15 @@ fn main() {
 
     let num_threads = match cli.mode {
         Mode::Serial => 1,
-        Mode::Parallel | Mode::Workers => thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+        _ => {
+            let threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+            println!("Using {threads} threads.");
+            threads
+        },
     };
 
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        match cli.mode {
-            Mode::Serial => step_serial(&curr_buffer, &mut next_buffer, width, height - TEXT_HEIGHT),
-            Mode::Parallel => step_parallel(&curr_buffer, &mut next_buffer, num_threads, width, height - TEXT_HEIGHT),
-            Mode::Workers => step_workers(&curr_buffer, &mut next_buffer, num_threads, cli.chunk_size.unwrap(), width, height - TEXT_HEIGHT),
-        }
-
-        swap(&mut curr_buffer, &mut next_buffer);
-        for (pixel, &cell) in pixels[width * TEXT_HEIGHT..].iter_mut().zip(curr_buffer.iter()) {
+    let mut render_frame = |window: &mut Window, grid: &[u8]| {
+        for (pixel, &cell) in pixels[width * TEXT_HEIGHT..].iter_mut().zip(grid.iter()) {
             *pixel = if cell == 1 { ALIVE_COLOUR } else { DEAD_COLOUR };
         }
 
@@ -99,6 +98,47 @@ fn main() {
         pixels[..width * TEXT_HEIGHT].fill(0);
         text.draw_text(&mut pixels, 2, 2, &format!("mode: {:?}; fps: {fps:.2}; num_threads: {num_threads}", cli.mode));
         window.update_with_buffer(&pixels, width, height).unwrap();
+    };
+
+    match cli.mode {
+        Mode::Serial | Mode::Parallel | Mode::Workers => {
+            let mut curr_buffer = vec![0u8; width * grid_height];
+            let mut next_buffer = vec![0u8; width * grid_height];
+            seed(&mut curr_buffer, width, grid_height);
+
+            while window.is_open() && !window.is_key_down(Key::Escape) {
+                match cli.mode {
+                    Mode::Serial => step_serial(&curr_buffer, &mut next_buffer, width, grid_height),
+                    Mode::Parallel => step_parallel(&curr_buffer, &mut next_buffer, num_threads, width, grid_height),
+                    Mode::Workers => step_workers(&curr_buffer, &mut next_buffer, num_threads, cli.chunk_size.unwrap(), width, grid_height),
+                    _ => unreachable!("Mode already filtered"),
+                }
+
+                swap(&mut curr_buffer, &mut next_buffer);
+                render_frame(&mut window, &curr_buffer);
+            }
+        }
+        Mode::Pool => {
+            let mut curr_vec = vec![0u8; width * grid_height];
+            seed(&mut curr_vec, width, grid_height);
+            let curr_buffer = Arc::new(RwLock::new(curr_vec));
+            let next_buffer = Arc::new(Mutex::new(vec![0u8; width * grid_height]));
+
+            let chunk_size = cli.chunk_size.unwrap_or(256);
+            let pool = initialise_pool(
+                Arc::clone(&curr_buffer),
+                Arc::clone(&next_buffer),
+                num_threads,
+                chunk_size,
+                width,
+                grid_height,
+            );
+
+            while window.is_open() && !window.is_key_down(Key::Escape) {
+                step_pool(&pool, &curr_buffer, &next_buffer);
+                render_frame(&mut window, &curr_buffer.read().unwrap());
+            }
+        }
     }
 
     exit(0);

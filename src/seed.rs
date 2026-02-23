@@ -1,6 +1,6 @@
 //! Various seed patterns for the Game of Life.
 
-use crate::game_of_life::wrap;
+use crate::wrap;
 
 pub fn seed(grid: &mut [u8], width: usize, height: usize) {
     for y in 0..height {
