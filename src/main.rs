@@ -7,8 +7,10 @@ use rust_102::implementations::parallel::step_parallel;
 use rust_102::implementations::pool::{initialise_pool, step_pool};
 use rust_102::implementations::serial::step_serial;
 use rust_102::implementations::workers::step_workers;
-use rust_102::seed::seed;
+use rust_102::rle::decode_rle_into_centered;
+use rust_102::seed::seed_gosper;
 use std::mem::swap;
+use std::path::PathBuf;
 use std::process::exit;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -50,6 +52,10 @@ struct CLI {
         required_if_eq_any([("mode", "workers"), ("mode", "pool")]),
     )]
     chunk_size: Option<usize>,
+
+    /// An optional run-length-encoded initial state to replace the default seed.
+    #[arg(long, value_name = "FILE")]
+    seed: Option<PathBuf>,
 }
 
 fn main() {
@@ -104,11 +110,18 @@ fn main() {
         window.update_with_buffer(&pixels, width, height).unwrap();
     };
 
+    let init_grid = |buffer: &mut Vec<u8>| {
+        match cli.seed {
+            Some(path) => decode_rle_into_centered(path, buffer, width, grid_height).expect("Failed to decode RLE file"),
+            None => seed_gosper(buffer, width, grid_height),
+        }
+    };
+
     match cli.mode {
         Mode::Serial | Mode::Parallel | Mode::Workers => {
             let mut curr_buffer = vec![0u8; width * grid_height];
             let mut next_buffer = vec![0u8; width * grid_height];
-            seed(&mut curr_buffer, width, grid_height);
+            init_grid(&mut curr_buffer);
 
             while window.is_open() && !window.is_key_down(Key::Escape) {
                 match cli.mode {
@@ -124,7 +137,7 @@ fn main() {
         }
         Mode::Pool => {
             let mut curr_vec = vec![0u8; width * grid_height];
-            seed(&mut curr_vec, width, grid_height);
+            init_grid(&mut curr_vec);
             let curr_buffer = Arc::new(RwLock::new(curr_vec));
             let next_buffer = Arc::new(Mutex::new(vec![0u8; width * grid_height]));
 

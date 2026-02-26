@@ -2,6 +2,7 @@
 
 pub mod implementations;
 pub mod seed;
+pub mod rle;
 
 const NEIGHBOUR_KERNEL: [(isize, isize); 8] = [
     (-1, -1),
