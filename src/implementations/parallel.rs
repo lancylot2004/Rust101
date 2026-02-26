@@ -1,5 +1,5 @@
-use std::thread;
 use crate::{advance_cell, idx, neighbor_count};
+use std::thread;
 
 /// A parallel step divides the grid into [num_threads] contiguous bands of cells, and each thread
 /// processes one band. Using [core::slice::split_at_mut] allows each thread to write to its own 
@@ -13,15 +13,13 @@ pub fn step_parallel(
 ) {
     let total = width * height;
     let cells_per_worker = (total + num_threads - 1) / num_threads;
+    assert!(num_threads <= total, "More threads than cells! What supercomputer are you using???");
 
     thread::scope(|scope| {
         let mut left: &mut [u8] = next_buffer;
 
         for worker_id in 0..num_threads {
             let start = worker_id * cells_per_worker;
-            if start >= total {
-                break;
-            }
             let end = (start + cells_per_worker).min(total);
 
             let len = end - start;

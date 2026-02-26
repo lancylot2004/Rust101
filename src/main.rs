@@ -1,16 +1,18 @@
+mod demonstrations;
+
 use clap::{Parser, ValueEnum};
 use minifb::{Key, Window, WindowOptions};
 use minifb_fonts::font6x8;
+use rust_102::implementations::parallel::step_parallel;
+use rust_102::implementations::pool::{initialise_pool, step_pool};
+use rust_102::implementations::serial::step_serial;
+use rust_102::implementations::workers::step_workers;
 use rust_102::seed::seed;
 use std::mem::swap;
 use std::process::exit;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
-use rust_102::implementations::parallel::step_parallel;
-use rust_102::implementations::pool::{initialise_pool, step_pool};
-use rust_102::implementations::serial::step_serial;
-use rust_102::implementations::workers::step_workers;
 
 const ALIVE_COLOUR: u32 = 0xFFFFFF;
 const DEAD_COLOUR: u32 = 0x000000;
@@ -41,7 +43,7 @@ struct CLI {
     #[arg(short, long)]
     mode: Mode,
 
-    /// Chunk size. Required when using the `workers` mode. Ignored otherwise.
+    /// Chunk size. Required when using the [Workers] or [Pool] mode. Ignored otherwise.
     #[arg(
         short = 'c',
         long,
